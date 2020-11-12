@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  My Image App - Label images
+# This is the global definitions
+# In this example the definitions is only for the Lambdas
+Globals:
+  Function:
+    Runtime: python3.6
+    Timeout: 600
+    MemorySize: 1024
+
+Resources:
+  CustomLablesApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: v1
+      Name: custom-label-api
+      Auth:
+        DefaultAuthorizer: AWS_IAM
+        InvokeRole: CALLER_CREDENTIALS
+
+  # This is the bucket to upload the images
+  ImageBucket:
+    Type: AWS::S3::Bucket
+
+  # This is the function that uploads the image file into an S3 bucket by providing a post presigned URL
+  UploadImageFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      CodeUri: app
+      Handler: upload_file.lambda_handler
+      Environment:
+        Variables:
+          IMAGE_BUCKET: !Ref ImageBucket  # This will be passed as an environ variable to Lambda
+      Policies:
+        - S3CrudPolicy:  # With this policy the Lambda has read-write access to the bucket
+            BucketName: !Ref ImageBucket
+      Events:
+        GetEvent:
+          Type: Api
+          Properties:
+            Path: /upload/
+            Method: get
+            RestApiId: !Ref CustomLablesApi
+            Auth:
+              Authorizer: 'NONE'
+
+  RekognizeImage:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      CodeUri: app
+      Handler: recognize_image.lambda_handler
+      Environment:
+        Variables:
+          IMAGE_BUCKET: !Ref ImageBucket  # This will be passed as an environ variable to Lambda
+      Policies:
+        - S3CrudPolicy:  # With this policy the Lambda has read-write access to the bucket
+            BucketName: !Ref ImageBucket
+        - AmazonRekognitionReadOnlyAccess
+      Events:
+        GetEvent:
+          Type: Api
+          Properties:
+            Path: /rekognize/
+            Method: get
+            RestApiId: !Ref CustomLablesApi
+            Auth:
+              Authorizer: 'NONE'
+
+Outputs:
+  ImageBucket:
+    Description: "The bucket to save the images"
+    Value: !Ref ImageBucket
+  CustomLablesApi:
+    Description: "API Gateway endpoint URL for Prod stage for Agora function"
+    Value: !Sub "https://${CustomLablesApi}.execute-api.${AWS::Region}.amazonaws.com/v1/"
